@@ -17,8 +17,8 @@ var layerRunes = "1234567890!@#$%^&*()-=[]_+{};:'/\"|><.,~`"
 
 func main() {
 	word := flag.Bool("w", false, "open in word mode")
-	layers := flag.Bool("l", false, "open in function layer mode")
-	contains := flag.String("c", "", "open in word mode and only user words containing the given character")
+	specialCharacter := flag.Bool("s", false, "open in function special character mode")
+	contains := flag.String("c", "", "open in word mode and only user words containing the given substring")
 	flag.Parse()
 
 	// this little bit of unintuative magic disables input buffering
@@ -35,19 +35,21 @@ func main() {
 	if *contains != "" {
 		containsMode(*contains)
 	} else if *word {
-		singleWord()
-	} else if *layers {
-		layerMode()
+		singleWordMode()
+	} else if *specialCharacter {
+		specialCharacterMode()
 	} else {
-		singleCharacter()
+		singleCharacterMode()
 	}
 }
 
+// getRandomRune picks a character at random from the geven charset
 func getRandomRune(charset string) byte {
 	characterLen := len(charset)
 	return charset[rand.Intn(characterLen)]
 }
 
+// handleInput from the users keyboard
 func handleInput(reader *bufio.Reader, buffer *string) {
 	input, _ := reader.ReadByte()
 	char := string(input)
@@ -61,7 +63,8 @@ func handleInput(reader *bufio.Reader, buffer *string) {
 	}
 }
 
-func singleWord() {
+// singleWordMode prints and waits for a single word
+func singleWordMode() {
 	words, err := ioutil.ReadFile("./words.txt")
 	if err != nil {
 		panic(err)
@@ -95,7 +98,8 @@ func singleWord() {
 	}
 }
 
-func containsMode(letter string) {
+// containsMode is the same a word mode but only includes words with the given substring
+func containsMode(substring string) {
 	words, err := ioutil.ReadFile("./words.txt")
 	if err != nil {
 		panic(err)
@@ -104,7 +108,7 @@ func containsMode(letter string) {
 	rawWordList := strings.Split(string(words), "\n")
 	wordList := []string{}
 	for _, word := range rawWordList {
-		if strings.Contains(word, letter) {
+		if strings.Contains(word, substring) {
 			wordList = append(wordList, word)
 		}
 	}
@@ -130,7 +134,8 @@ func containsMode(letter string) {
 	}
 }
 
-func singleCharacter() {
+// singleCharacterMode displays and waits for a single character
+func singleCharacterMode() {
 	reader := bufio.NewReader(os.Stdin)
 	rand.Seed(time.Now().Unix())
 
@@ -149,7 +154,8 @@ func singleCharacter() {
 	}
 }
 
-func layerMode() {
+// specialCharacterMode picks a single special character and waits for input
+func specialCharacterMode() {
 	reader := bufio.NewReader(os.Stdin)
 	rand.Seed(time.Now().Unix())
 
