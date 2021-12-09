@@ -13,13 +13,20 @@ import (
 )
 
 var runes = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890!@#$%^&*()-=[]_+{};:'/\"|><.,~`"
-var layerRunes = "1234567890!@#$%^&*()-=[]_+{};:'/\"|><.,~`"
+var specialRunes = "1234567890!@#$%^&*()-=[]_+{};:'/\"|><.,~`"
+
+type flags struct {
+	wordMode             bool
+	specialCharacterMode bool
+	containsMode         string
+}
 
 func main() {
-	word := flag.Bool("w", false, "open in word mode")
-	specialCharacter := flag.Bool("s", false, "open in function special character mode")
-	contains := flag.String("c", "", "open in word mode and only user words containing the given substring")
-	flag.Parse()
+	var singleCharacterMode bool
+	var wordList []string
+
+	flags := parseFlags()
+	rand.Seed(time.Now().Unix())
 
 	// this little bit of unintuative magic disables input buffering
 	// so that the reader can read a single byte immediatly without
@@ -32,27 +39,48 @@ func main() {
 	exec.Command("stty", "-F", "/dev/tty", "-echo", "min", "1").
 		Run()
 
-	if *contains != "" {
-		containsMode(*contains)
-	} else if *word {
-		singleWordMode()
-	} else if *specialCharacter {
-		specialCharacterMode()
-	} else {
-		singleCharacterMode()
+	switch {
+	case flags.wordMode:
+		wordList = loadFromFile()
+
+	case flags.containsMode != "":
+		rawWordList := loadFromFile()
+		for _, word := range rawWordList {
+			if strings.Contains(word, flags.containsMode) {
+				wordList = append(wordList, word)
+			}
+		}
+
+	case flags.specialCharacterMode:
+		wordList = splitCharacters(specialRunes)
+		singleCharacterMode = true
+
+	default:
+		wordList = splitCharacters(runes)
+		singleCharacterMode = true
 	}
+
+	run(wordList, singleCharacterMode)
 }
 
-// getRandomRune picks a character at random from the geven charset
-func getRandomRune(charset string) byte {
-	characterLen := len(charset)
-	return charset[rand.Intn(characterLen)]
+func parseFlags() (f flags) {
+	flag.BoolVar(&f.wordMode, "w", false, "open in word mode")
+	flag.BoolVar(&f.specialCharacterMode, "s", false, "open in function special character mode")
+	flag.StringVar(&f.containsMode, "c", "", "open in word mode and only user words containing the given substring")
+	flag.Parse()
+
+	return
 }
 
 // handleInput from the users keyboard
-func handleInput(reader *bufio.Reader, buffer *string) {
+func handleInput(reader *bufio.Reader, buffer *string, singleCharacterMode bool) {
 	input, _ := reader.ReadByte()
 	char := string(input)
+
+	if singleCharacterMode {
+		*buffer = char
+		return
+	}
 
 	if char == "\x7f" {
 		fmt.Print("\n\033[1A\033[K")
@@ -63,113 +91,41 @@ func handleInput(reader *bufio.Reader, buffer *string) {
 	}
 }
 
-// singleWordMode prints and waits for a single word
-func singleWordMode() {
+func loadFromFile() []string {
 	words, err := ioutil.ReadFile("./words.txt")
 	if err != nil {
 		panic(err)
 	}
 
-	wordList := strings.Split(string(words), "\n")
+	return strings.Split(string(words), "\n")
+}
+
+func splitCharacters(characters string) (wordList []string) {
+	for i, m := 0, len(characters); i < m; i++ {
+		wordList = append(wordList, string(characters[i]))
+	}
+
+	return
+}
+
+func run(wordList []string, singleCharacterMode bool) {
 	wordCount := len(wordList)
-
 	reader := bufio.NewReader(os.Stdin)
-	rand.Seed(time.Now().Unix())
-
 	buffer := ""
+
 	for {
 		subject := wordList[rand.Intn(wordCount)]
 		fmt.Printf("\n%s\n", string(subject))
 
 		for {
-			input, _ := reader.ReadByte()
-			buffer += string(input)
+			handleInput(reader, &buffer, singleCharacterMode)
 
 			if buffer == subject {
 				buffer = ""
 				break
-			} else if string(input) == "\x7f" || string(input) == "\n" {
-				fmt.Print("\n\033[1A\033[K")
-				buffer = ""
-			} else {
-				fmt.Print(string(input))
+			} else if singleCharacterMode {
+				fmt.Println(subject)
 			}
-		}
-	}
-}
-
-// containsMode is the same a word mode but only includes words with the given substring
-func containsMode(substring string) {
-	words, err := ioutil.ReadFile("./words.txt")
-	if err != nil {
-		panic(err)
-	}
-
-	rawWordList := strings.Split(string(words), "\n")
-	wordList := []string{}
-	for _, word := range rawWordList {
-		if strings.Contains(word, substring) {
-			wordList = append(wordList, word)
-		}
-	}
-
-	wordCount := len(wordList)
-
-	reader := bufio.NewReader(os.Stdin)
-	rand.Seed(time.Now().Unix())
-
-	buffer := ""
-	for {
-		subject := wordList[rand.Intn(wordCount)]
-		fmt.Printf("\n%s\n", string(subject))
-
-		for {
-			handleInput(reader, &buffer)
-
-			if buffer == subject {
-				buffer = ""
-				break
-			}
-		}
-	}
-}
-
-// singleCharacterMode displays and waits for a single character
-func singleCharacterMode() {
-	reader := bufio.NewReader(os.Stdin)
-	rand.Seed(time.Now().Unix())
-
-	for {
-		char := getRandomRune(runes)
-		fmt.Printf("\n%s\n", string(char))
-
-		for {
-			input, _ := reader.ReadByte()
-			fmt.Println(string(input))
-			if char == input {
-				break
-			}
-			fmt.Println(string(char))
-		}
-	}
-}
-
-// specialCharacterMode picks a single special character and waits for input
-func specialCharacterMode() {
-	reader := bufio.NewReader(os.Stdin)
-	rand.Seed(time.Now().Unix())
-
-	for {
-		char := getRandomRune(layerRunes)
-		fmt.Printf("\n%s\n", string(char))
-
-		for {
-			input, _ := reader.ReadByte()
-			fmt.Println(string(input))
-			if char == input {
-				break
-			}
-			fmt.Println(string(char))
 		}
 	}
 }
