@@ -18,6 +18,7 @@ var specialRunes = "1234567890!@#$%^&*()-=[]_+{};:'/\"|><.,~`"
 type flags struct {
 	wordMode             bool
 	specialCharacterMode bool
+	paragraphMode        bool
 	containsMode         string
 }
 
@@ -40,6 +41,11 @@ func main() {
 		Run()
 
 	switch {
+	case flags.paragraphMode:
+		mode := &paragraphMode{}
+		mode.run()
+		return
+
 	case flags.wordMode:
 		wordList = loadFromFile()
 
@@ -66,6 +72,7 @@ func main() {
 func parseFlags() (f flags) {
 	flag.BoolVar(&f.wordMode, "w", false, "open in word mode")
 	flag.BoolVar(&f.specialCharacterMode, "s", false, "open in function special character mode")
+	flag.BoolVar(&f.paragraphMode, "p", false, "open in paragraph mode")
 	flag.StringVar(&f.containsMode, "c", "", "open in word mode and only user words containing the given substring")
 	flag.Parse()
 
