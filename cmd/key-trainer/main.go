@@ -39,6 +39,7 @@ func main() {
 		// the terminal
 	exec.Command("stty", "-F", "/dev/tty", "-echo", "min", "1").
 		Run()
+    defer exec.Command("reset").Run()
 
 	switch {
 	case flags.paragraphMode:
@@ -62,6 +63,7 @@ func main() {
 		singleCharacterMode = true
 
 	default:
+
 		wordList = splitCharacters(runes)
 		singleCharacterMode = true
 	}
