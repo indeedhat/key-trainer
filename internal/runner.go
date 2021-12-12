@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/buger/goterm"
 	"github.com/fatih/color"
@@ -14,6 +15,8 @@ import (
 const (
 	paragraphSize    = 100
 	defaultTermWidth = 80
+
+	cpmToWpm = 0.2
 )
 
 type runnerLine struct {
@@ -32,11 +35,10 @@ type Runner struct {
 	termWidth int
 
 	// place tracking
-	buffer          string
-	lines           []*runnerLine
-	completeInLine  int
-	errorInLastWord bool
-	completedTotal  int
+	buffer         string
+	lines          []*runnerLine
+	completeInLine int
+	typo           bool
 
 	// wordlist stuff
 	wordList      []string
@@ -47,6 +49,13 @@ type Runner struct {
 	print struct {
 		error *color.Color
 		done  *color.Color
+	}
+
+	stats struct {
+		startTime      *time.Time
+		complete       uint
+		characterCount uint
+		typos          uint
 	}
 }
 
@@ -71,11 +80,13 @@ func (run *Runner) Run(wordList string) {
 	run.print.error = color.New(color.BgRed, color.FgWhite)
 	run.print.done = color.New(color.BgGreen, color.FgBlack)
 
+	run.DisplayStartScreen(wordList)
+
 	for {
 		if run.config.TotalWords != 0 &&
-			run.config.TotalWords <= uint(run.completedTotal) {
+			run.config.TotalWords <= uint(run.stats.complete) {
 
-			fmt.Println("\nWell Done!")
+			run.DisplayStatusScreen()
 			break
 		}
 
@@ -84,6 +95,77 @@ func (run *Runner) Run(wordList string) {
 		run.render()
 		run.handleInput()
 	}
+}
+
+// DisplayStartScreen will briefly show settings befor starting the test
+func (run *Runner) DisplayStartScreen(wordList string) {
+	contains := "N/A"
+	if run.config.Contains != "" {
+		contains = run.config.Contains
+	}
+
+	totalWords := "N/A"
+	if run.config.TotalWords != 0 {
+		totalWords = fmt.Sprint(run.config.TotalWords)
+	}
+
+	for i := 5; i > 0; i-- {
+		goterm.Clear()
+		goterm.MoveCursor(0, 0)
+		goterm.Flush()
+
+		fmt.Printf(
+			`
+  Typing Test:
+    
+  tracking will begin on your first keypress
+
+  SETTINGS:
+  Word List:    %s
+  Contains:     %s
+  Total Words:  %s
+
+  Starting in %d
+    `,
+			wordList,
+			contains,
+			totalWords,
+			i,
+		)
+		time.Sleep(time.Second)
+	}
+}
+
+// DisplayStatusScreen detailing the runs statistics
+// this is intended to be ran on close
+func (run *Runner) DisplayStatusScreen() {
+	if run.stats.startTime == nil {
+		return
+	}
+
+	elapsed := time.Now().Sub(*run.stats.startTime)
+	cpm := float64(run.stats.characterCount) / elapsed.Minutes()
+
+	fmt.Printf(
+		`
+  Typing Test Complete!
+
+  Time Elapseed:    %s
+  Wpm (corrected):  %d
+  Cpm (corrected):  %d
+
+  Words Complete:   %d
+  Wpm:              %d
+
+  Typos:            %d
+    `,
+		elapsed.String(),
+		uint(cpm*cpmToWpm),
+		uint(cpm),
+		run.stats.complete,
+		uint(float64(run.stats.complete)/elapsed.Minutes()),
+		run.stats.typos,
+	)
 }
 
 // render the terminal output
@@ -113,7 +195,7 @@ func (run *Runner) render() {
 
 		if bufferLen == 0 {
 			fmt.Print(currentWord)
-		} else if run.errorInLastWord {
+		} else if run.typo {
 			run.print.error.Print(currentWord)
 		} else {
 			run.print.done.Print(string(currentWord[:bufferLen]))
@@ -169,13 +251,17 @@ func (run *Runner) resize() {
 // advanceLines will remove any complete lines and add new ones
 // to keep up to the total word count
 func (run *Runner) advanceLines() {
-	if run.completeInLine != 0 && run.completeInLine == run.lines[0].wordLen {
+	if run.completeInLine != 0 &&
+		run.completeInLine == run.lines[0].wordLen {
+
 		run.lines = run.lines[1:]
 		run.wordCount -= run.completeInLine
 		run.completeInLine = 0
 	}
 
-	if run.wordPickTotal > int(run.config.TotalWords) {
+	if run.config.TotalWords != 0 &&
+		run.wordPickTotal > int(run.config.TotalWords) {
+
 		return
 	}
 
@@ -194,7 +280,9 @@ func (run *Runner) advanceLines() {
 		cursor.charLen += newWordLen + 1
 		run.wordPickTotal++
 
-		if run.wordPickTotal > int(run.config.TotalWords) {
+		if int(run.config.TotalWords) != 0 &&
+			run.wordPickTotal > int(run.config.TotalWords) {
+
 			return
 		}
 	}
@@ -215,6 +303,12 @@ func (run *Runner) lastLine() *runnerLine {
 
 func (run *Runner) handleInput() {
 	input, _ := run.reader.ReadByte()
+
+	if run.stats.startTime == nil {
+		now := time.Now()
+		run.stats.startTime = &now
+	}
+
 	char := string(input)
 	subject := run.lines[0].words[run.completeInLine]
 
@@ -233,7 +327,8 @@ func (run *Runner) handleInput() {
 		if run.buffer == subject {
 			run.buffer = ""
 			run.completeInLine++
-			run.completedTotal++
+			run.stats.complete++
+			run.stats.characterCount += uint(len(subject) + 1)
 		} else {
 			run.buffer += char
 		}
@@ -242,6 +337,12 @@ func (run *Runner) handleInput() {
 		run.buffer += char
 	}
 
-	run.errorInLastWord = len(run.buffer) == 0 ||
+	hasTypo := len(run.buffer) == 0 ||
 		!strings.HasPrefix(subject, run.buffer)
+
+	if !run.typo && hasTypo {
+		run.stats.typos++
+	}
+
+	run.typo = hasTypo
 }

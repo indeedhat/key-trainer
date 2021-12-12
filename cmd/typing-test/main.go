@@ -4,7 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"os"
 	"os/exec"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/indeedhat/key-trainer/internal"
@@ -15,9 +18,6 @@ const DefaultWordlist = "default"
 func main() {
 	wordList, config := parseInput()
 
-	fmt.Print(wordList)
-	time.Sleep(time.Second)
-
 	// this little bit of unintuative magic disables input buffering
 	// so that the reader can read a single byte immediatly without
 	// the need for pressing enter
@@ -27,6 +27,8 @@ func main() {
 	rand.Seed(time.Now().Unix())
 
 	runner := internal.NewRunner(config)
+
+	handleInterupt(runner)
 	runner.Run(wordList)
 }
 
@@ -35,9 +37,26 @@ func parseInput() (string, internal.RunnerConfig) {
 	wordList := DefaultWordlist
 	config := internal.RunnerConfig{}
 
+	wordLists := internal.FindWordLists()
+	wordListsString := ""
+	for _, key := range wordLists {
+		wordListsString += fmt.Sprintf("  %s\n", key)
+	}
+
 	flag.Usage = func() {
-		fmt.Print("Typing Test\n\n")
-		fmt.Println("A simple tool to help me not suck")
+		fmt.Printf(
+			`Typing Test
+A simple tool to help me not suck
+
+Usage:
+  ./typing-test [options] [wordlist]
+
+WORDLISTS:
+%s
+OPTIONS:
+`,
+			wordListsString,
+		)
 
 		flag.PrintDefaults()
 	}
@@ -51,4 +70,15 @@ func parseInput() (string, internal.RunnerConfig) {
 	}
 
 	return wordList, config
+}
+
+// handleInterupt from the system (ctrl+c)
+func handleInterupt(run *internal.Runner) {
+	signals := make(chan os.Signal)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-signals
+		run.DisplayStatusScreen()
+		os.Exit(1)
+	}()
 }

@@ -14,7 +14,7 @@ The default behaviour is to open in single character mode
 ## ./typing-test
 this is the version that all the uodates will be comming in
 
- - [ ] add cpm wpm timers/displays
+ - [x] add cpm wpm timers/displays
  - [x] add contains mode
  - [x] add a mode where you set the total number of words and you type til they are done
- - [ ] capture ctrl+c and display a closing screen with stats
+ - [x] capture ctrl+c and display a closing screen with stats
