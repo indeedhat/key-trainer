@@ -14,13 +14,14 @@ func loadFromFile(filename, contains string) []string {
 	}
 
 	wordList := strings.Split(string(words), "\n")
-	if len(contains) == 0 {
-		return wordList
-	}
-
 	var filteredWords []string
+
 	for _, word := range wordList {
-		if strings.Contains(word, contains) {
+		if word == "" {
+			continue
+		}
+
+		if contains == "" || strings.Contains(word, contains) {
 			filteredWords = append(filteredWords, word)
 		}
 	}
