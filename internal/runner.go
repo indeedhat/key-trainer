@@ -101,16 +101,6 @@ func (run *Runner) Run(ctx context.Context) {
 
 	run.DisplayStartScreen()
 
-	if run.config.TimeLimit != 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(
-			ctx,
-			time.Second*time.Duration(run.config.TimeLimit),
-		)
-
-		defer cancel()
-	}
-
 	for {
 		if run.config.TotalWords != 0 &&
 			run.config.TotalWords <= uint(run.stats.complete) {
@@ -125,6 +115,7 @@ func (run *Runner) Run(ctx context.Context) {
 
 		select {
 		case input := <-run.input:
+			ctx = run.startSession(ctx)
 			run.handleInput(input)
 
 		case <-ctx.Done():
@@ -150,7 +141,7 @@ func (run *Runner) DisplayStartScreen() {
 
 	timeLimit := "N/A"
 	if run.config.TimeLimit != 0 {
-		timeLimit = fmt.Sprint(run.config.TotalWords)
+		timeLimit = fmt.Sprint(run.config.TimeLimit)
 	}
 
 	for i := 5; i > 0; i-- {
@@ -212,6 +203,26 @@ func (run *Runner) DisplayStatusScreen() {
 		uint(float64(run.stats.complete)/elapsed.Minutes()),
 		run.stats.typos,
 	)
+}
+
+// startSession will start timers etc on first input
+func (run *Runner) startSession(ctx context.Context) context.Context {
+	if run.stats.startTime != nil {
+		return ctx
+	}
+
+	now := time.Now()
+	run.stats.startTime = &now
+
+	if run.config.TimeLimit != 0 {
+		fmt.Print("starting timeout")
+		ctx, _ = context.WithTimeout(
+			ctx,
+			time.Second*time.Duration(run.config.TimeLimit),
+		)
+	}
+
+	return ctx
 }
 
 // render the terminal output
@@ -348,10 +359,6 @@ func (run *Runner) lastLine() *runnerLine {
 }
 
 func (run *Runner) handleInput(input byte) {
-	if run.stats.startTime == nil {
-		now := time.Now()
-		run.stats.startTime = &now
-	}
 
 	char := string(input)
 	subject := run.lines[0].words[run.completeInLine]
