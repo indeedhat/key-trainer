@@ -5,4 +5,5 @@ package internal
 type RunnerConfig struct {
 	Contains   string
 	TotalWords uint
+	TimeLimit  uint
 }

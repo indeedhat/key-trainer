@@ -2,6 +2,7 @@ package internal
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"math/rand"
 	"os"
@@ -25,32 +26,35 @@ type runnerLine struct {
 	words   []string
 }
 
+type runnerPrint struct {
+	error *color.Color
+	done  *color.Color
+}
+
 type Runner struct {
 	config RunnerConfig
 
 	// input
-	reader *bufio.Reader
+	reader      *bufio.Reader
+	input       chan byte
+	inputBuffer string
 
 	// render
-	termWidth int
+	termWidth     int
+	wordsInBuffer int
+	wordPickTotal int
 
 	// place tracking
-	buffer         string
 	lines          []*runnerLine
 	completeInLine int
 	typo           bool
 
 	// wordlist stuff
-	wordList      []string
-	wordListLen   int
-	wordCount     int
-	wordPickTotal int
+	wordList string
+	words    []string
+	wordsLen int
 
-	print struct {
-		error *color.Color
-		done  *color.Color
-	}
-
+	print runnerPrint
 	stats struct {
 		startTime      *time.Time
 		complete       uint
@@ -60,27 +64,52 @@ type Runner struct {
 }
 
 // NewRunner just returns a reference to new Runner struct
-func NewRunner(config ...RunnerConfig) *Runner {
+func NewRunner(wordList string, config ...RunnerConfig) *Runner {
 	var conf RunnerConfig
 
 	if len(config) > 0 {
 		conf = config[0]
 	}
 
-	return &Runner{config: conf}
+	words := loadFromFile(wordList, conf.Contains)
+	return &Runner{
+		config:    conf,
+		termWidth: defaultTermWidth,
+
+		input:  make(chan byte),
+		reader: bufio.NewReader(os.Stdin),
+
+		wordList: wordList,
+		words:    words,
+		wordsLen: len(words),
+
+		print: runnerPrint{
+			error: color.New(color.BgRed, color.FgWhite),
+			done:  color.New(color.BgGreen, color.FgBlack),
+		},
+	}
 }
 
 // run the mode
-func (run *Runner) Run(wordList string) {
-	run.wordList = loadFromFile(wordList, run.config.Contains)
-	run.wordListLen = len(run.wordList)
-	run.termWidth = defaultTermWidth
-	run.reader = bufio.NewReader(os.Stdin)
+func (run *Runner) Run(ctx context.Context) {
+	go func() {
+		for {
+			char, _ := run.reader.ReadByte()
+			run.input <- char
+		}
+	}()
 
-	run.print.error = color.New(color.BgRed, color.FgWhite)
-	run.print.done = color.New(color.BgGreen, color.FgBlack)
+	run.DisplayStartScreen()
 
-	run.DisplayStartScreen(wordList)
+	if run.config.TimeLimit != 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(
+			ctx,
+			time.Second*time.Duration(run.config.TimeLimit),
+		)
+
+		defer cancel()
+	}
 
 	for {
 		if run.config.TotalWords != 0 &&
@@ -93,12 +122,22 @@ func (run *Runner) Run(wordList string) {
 		run.advanceLines()
 		run.resize()
 		run.render()
-		run.handleInput()
+
+		select {
+		case input := <-run.input:
+			run.handleInput(input)
+
+		case <-ctx.Done():
+			goto complete
+		}
 	}
+
+complete:
+	run.DisplayStatusScreen()
 }
 
 // DisplayStartScreen will briefly show settings befor starting the test
-func (run *Runner) DisplayStartScreen(wordList string) {
+func (run *Runner) DisplayStartScreen() {
 	contains := "N/A"
 	if run.config.Contains != "" {
 		contains = run.config.Contains
@@ -107,6 +146,11 @@ func (run *Runner) DisplayStartScreen(wordList string) {
 	totalWords := "N/A"
 	if run.config.TotalWords != 0 {
 		totalWords = fmt.Sprint(run.config.TotalWords)
+	}
+
+	timeLimit := "N/A"
+	if run.config.TimeLimit != 0 {
+		timeLimit = fmt.Sprint(run.config.TotalWords)
 	}
 
 	for i := 5; i > 0; i-- {
@@ -124,12 +168,14 @@ func (run *Runner) DisplayStartScreen(wordList string) {
   Word List:    %s
   Contains:     %s
   Total Words:  %s
+  Time Limit:   %s
 
   Starting in %d
     `,
-			wordList,
+			run.wordList,
 			contains,
 			totalWords,
+			timeLimit,
 			i,
 		)
 		time.Sleep(time.Second)
@@ -191,7 +237,7 @@ func (run *Runner) render() {
 		}
 
 		currentWord := line.words[run.completeInLine]
-		bufferLen := len(run.buffer)
+		bufferLen := len(run.inputBuffer)
 
 		if bufferLen == 0 {
 			fmt.Print(currentWord)
@@ -206,7 +252,7 @@ func (run *Runner) render() {
 		fmt.Print(strings.Join(line.words[run.completeInLine+1:], " ") + "\n")
 	}
 
-	fmt.Print("\n  ", run.buffer)
+	fmt.Print("\n  ", run.inputBuffer)
 }
 
 // resize the window
@@ -231,7 +277,7 @@ func (run *Runner) resize() {
 	run.lines = []*runnerLine{}
 	cursor := run.lastLine()
 
-	for i := 0; i < run.wordCount; i++ {
+	for i := 0; i < run.wordsInBuffer; i++ {
 		newWord := words[i]
 		newWordLen := len(newWord)
 
@@ -255,7 +301,7 @@ func (run *Runner) advanceLines() {
 		run.completeInLine == run.lines[0].wordLen {
 
 		run.lines = run.lines[1:]
-		run.wordCount -= run.completeInLine
+		run.wordsInBuffer -= run.completeInLine
 		run.completeInLine = 0
 	}
 
@@ -266,8 +312,8 @@ func (run *Runner) advanceLines() {
 	}
 
 	cursor := run.lastLine()
-	for ; run.wordCount < paragraphSize; run.wordCount++ {
-		newWord := run.wordList[rand.Intn(run.wordListLen)]
+	for ; run.wordsInBuffer < paragraphSize; run.wordsInBuffer++ {
+		newWord := run.words[rand.Intn(run.wordsLen)]
 		newWordLen := len(newWord)
 
 		if cursor.charLen+newWordLen+1 > run.termWidth {
@@ -301,9 +347,7 @@ func (run *Runner) lastLine() *runnerLine {
 	return cursor
 }
 
-func (run *Runner) handleInput() {
-	input, _ := run.reader.ReadByte()
-
+func (run *Runner) handleInput(input byte) {
 	if run.stats.startTime == nil {
 		now := time.Now()
 		run.stats.startTime = &now
@@ -319,26 +363,26 @@ func (run *Runner) handleInput() {
 	switch char {
 	// backspace
 	case "\x7f":
-		if len(run.buffer) > 0 {
-			run.buffer = run.buffer[:len(run.buffer)-1]
+		if len(run.inputBuffer) > 0 {
+			run.inputBuffer = run.inputBuffer[:len(run.inputBuffer)-1]
 		}
 
 	case " ":
-		if run.buffer == subject {
-			run.buffer = ""
+		if run.inputBuffer == subject {
+			run.inputBuffer = ""
 			run.completeInLine++
 			run.stats.complete++
 			run.stats.characterCount += uint(len(subject) + 1)
 		} else {
-			run.buffer += char
+			run.inputBuffer += char
 		}
 
 	default:
-		run.buffer += char
+		run.inputBuffer += char
 	}
 
-	hasTypo := len(run.buffer) == 0 ||
-		!strings.HasPrefix(subject, run.buffer)
+	hasTypo := len(run.inputBuffer) == 0 ||
+		!strings.HasPrefix(subject, run.inputBuffer)
 
 	if !run.typo && hasTypo {
 		run.stats.typos++

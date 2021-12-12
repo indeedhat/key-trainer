@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -26,10 +27,20 @@ func main() {
 
 	rand.Seed(time.Now().Unix())
 
-	runner := internal.NewRunner(config)
+	ctx, cancel := context.WithCancel(context.Background())
+	runner := internal.NewRunner(wordList, config)
 
-	handleInterupt(runner)
-	runner.Run(wordList)
+	signals := make(chan os.Signal)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-signals
+		cancel()
+
+		<-time.After(time.Second)
+		os.Exit(1)
+	}()
+
+	runner.Run(ctx)
 }
 
 // parseInput from the command line to generate config
@@ -61,8 +72,10 @@ OPTIONS:
 		flag.PrintDefaults()
 	}
 
-	flag.UintVar(&config.TotalWords, "t", 0, "Total words to be displayed before the run is complete")
+	flag.UintVar(&config.TotalWords, "wc", 0, "Total words to be displayed before the run is complete")
 	flag.StringVar(&config.Contains, "c", "", "Only use words that contain the given substring")
+	flag.UintVar(&config.TimeLimit, "t", 0, "Set a time limit for the test")
+
 	flag.Parse()
 
 	if flag.NArg() != 0 {
@@ -70,15 +83,4 @@ OPTIONS:
 	}
 
 	return wordList, config
-}
-
-// handleInterupt from the system (ctrl+c)
-func handleInterupt(run *internal.Runner) {
-	signals := make(chan os.Signal)
-	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-signals
-		run.DisplayStatusScreen()
-		os.Exit(1)
-	}()
 }
