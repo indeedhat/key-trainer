@@ -71,7 +71,7 @@ func NewRunner(wordList string, config ...RunnerConfig) *Runner {
 		conf = config[0]
 	}
 
-	words := loadFromFile(wordList, conf.Contains)
+	words := loadFromFile(wordList, conf)
 	return &Runner{
 		config:    conf,
 		termWidth: defaultTermWidth,
@@ -105,8 +105,7 @@ func (run *Runner) Run(ctx context.Context) {
 		if run.config.TotalWords != 0 &&
 			run.config.TotalWords <= uint(run.stats.complete) {
 
-			run.DisplayStatusScreen()
-			break
+			goto complete
 		}
 
 		run.advanceLines()
@@ -317,7 +316,7 @@ func (run *Runner) advanceLines() {
 	}
 
 	if run.config.TotalWords != 0 &&
-		run.wordPickTotal > int(run.config.TotalWords) {
+		run.wordPickTotal >= int(run.config.TotalWords) {
 
 		return
 	}
@@ -396,4 +395,7 @@ func (run *Runner) handleInput(input byte) {
 	}
 
 	run.typo = hasTypo
+}
+
+func MyFunc(run *Runner) {
 }

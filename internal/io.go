@@ -7,7 +7,7 @@ import (
 )
 
 // loadFromFile will return the word list form the given key
-func loadFromFile(filename, contains string) []string {
+func loadFromFile(filename string, conf RunnerConfig) []string {
 	words, err := ioutil.ReadFile(fmt.Sprint("wordlists/", filename, ".txt"))
 	if err != nil {
 		panic(err)
@@ -21,9 +21,11 @@ func loadFromFile(filename, contains string) []string {
 			continue
 		}
 
-		if contains == "" || strings.Contains(word, contains) {
+		if conf.Contains == "" || conf.ContainsAny == "" { 
 			filteredWords = append(filteredWords, word)
-		}
+		} else if strings.Contains(word, conf.Contains) || strings.ContainsAny(word, conf.ContainsAny ) {
+			filteredWords = append(filteredWords, word)
+        }
 	}
 
 	return filteredWords

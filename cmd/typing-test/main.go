@@ -74,6 +74,7 @@ OPTIONS:
 
 	flag.UintVar(&config.TotalWords, "wc", 0, "Total words to be displayed before the run is complete")
 	flag.StringVar(&config.Contains, "c", "", "Only use words that contain the given substring")
+	flag.StringVar(&config.ContainsAny, "ca", "", "Only use words that contain any of the given substring")
 	flag.UintVar(&config.TimeLimit, "t", 0, "Set a time limit for the test")
 
 	flag.Parse()

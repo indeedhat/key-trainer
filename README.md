@@ -21,6 +21,8 @@ WORDLISTS:
 OPTIONS:
   -c string
     	Only use words that contain the given substring
+  -ca string
+    	Only use words that contain any of the given substring
   -t uint
     	Set a time limit for the test
   -wc uint
