@@ -21,11 +21,13 @@ func loadFromFile(filename string, conf RunnerConfig) []string {
 			continue
 		}
 
-		if conf.Contains == "" || conf.ContainsAny == "" { 
+		if conf.Contains == "" && conf.ContainsAny == "" {
 			filteredWords = append(filteredWords, word)
-		} else if strings.Contains(word, conf.Contains) || strings.ContainsAny(word, conf.ContainsAny ) {
+		} else if conf.Contains != "" && strings.Contains(word, conf.Contains) {
 			filteredWords = append(filteredWords, word)
-        }
+		} else if conf.ContainsAny != "" && strings.ContainsAny(word, conf.ContainsAny) {
+			filteredWords = append(filteredWords, word)
+		}
 	}
 
 	return filteredWords

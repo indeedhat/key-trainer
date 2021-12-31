@@ -133,6 +133,11 @@ func (run *Runner) DisplayStartScreen() {
 		contains = run.config.Contains
 	}
 
+	containsAny := "N/A"
+	if run.config.ContainsAny != "" {
+		containsAny = run.config.ContainsAny
+	}
+
 	totalWords := "N/A"
 	if run.config.TotalWords != 0 {
 		totalWords = fmt.Sprint(run.config.TotalWords)
@@ -157,6 +162,7 @@ func (run *Runner) DisplayStartScreen() {
   SETTINGS:
   Word List:    %s
   Contains:     %s
+  Contains Any: %s
   Total Words:  %s
   Time Limit:   %s
 
@@ -164,6 +170,7 @@ func (run *Runner) DisplayStartScreen() {
     `,
 			run.wordList,
 			contains,
+			containsAny,
 			totalWords,
 			timeLimit,
 			i,
